@@ -1,0 +1,232 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Coveralls reports
+.coverage
+*.cover
+.hypothesis/
+
+# Environments
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Flask project
+*.pid
+
+# Pyre
+.pyre/
+
+# Translations
+*.mo
+
+# Celery beat schedule file
+celerybeat-schedule
+
+# dotenv
+.env
+
+# Pycharm
+.idea/
+.vscode/
+*.suo
+*.ntvs
+*.njsproj
+*.sln
+*.sw?
+.idea/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*.swp
+*.swo
+*.orig
+
+# Python Byte-Compiled Files
+*.pyc
+*.pyo
+*.pyd
+
+# Pipenv
+Pipfile.lock
+
+# Jupyter
+.ipynb_checkpoints
+
+# Coverage reports
+coverage.xml
+*.cover
+
+# Unit test / coverage reports
+.coverage
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Pyre
+.pyre/
+
+# Linting
+.pylintrc
+pylint-output.json
+
+# Build and distribution artifacts
+.eggs/
+.eggs/EGG-INFO/
+*.egg-info/
+.installed.cfg
+*.egg
+.dist-info/
+.installed.cfg
+
+# tox
+.tox
+.tox/
+tox.ini
+
+# Environments
+.venv
+ENV/
+env.bak/
+venv.bak/
+
+# Pipenv
+Pipfile.lock
+
+# pytype
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints
+
+# VS Code
+.vscode/
+
+# mypy
+.mypy_cache/
+
+# Coverage reports
+.coverage
+*.cover
+
+# Unit test / coverage reports
+.coverage
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Linting
+.pylintrc
+pylint-output.json
+
+# Pyre
+.pyre/
+
+# Debug logs
+debug.log
