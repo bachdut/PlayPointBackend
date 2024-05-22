@@ -1,18 +1,17 @@
 from flask import Flask, jsonify, request
-#from flask_sqlalchemy import SQLAlchemy
 from dbModel import db
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token, create_refresh_token
 import logging
 from datetime import datetime
-
+from google.oauth2 import id_token
+from google.auth.transport import requests
 
 logging.basicConfig(level=logging.DEBUG)
 
 # Initialize SQLAlchemy and Bcrypt here without an app
 bcrypt = Bcrypt()
-
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
@@ -23,6 +22,9 @@ bcrypt.init_app(app)
 
 jwt = JWTManager(app)
 migrate = Migrate(app, db)
+
+# Google OAuth 2.0 client ID
+GOOGLE_CLIENT_ID = 'your-google-client-id'
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -57,12 +59,74 @@ def login():
             'refresh_token': refresh_token,
             'user': {'id': user.id, 'username': user.username}
         }), 200
+    else:
+        return jsonify({'message': 'Invalid credentials'}), 401
+
+@app.route('/login/google', methods=['POST'])
+def google_login():
+    data = request.get_json()
+    token = data.get('token')
+    
+    try:
+        # Verify the token
+        idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
+        
+        if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+            return jsonify({'message': 'Invalid token issuer'}), 400
+
+        email = idinfo['email']
+        username = idinfo.get('name', email.split('@')[0])
+
+        # Check if the user already exists
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            # Create a new user if not exists
+            user = User(username=username, email=email, password='')
+            db.session.add(user)
+            db.session.commit()
+
+        # Generate tokens
+        access_token = create_access_token(identity=user.id)
+        refresh_token = create_refresh_token(identity=user.id)
+        return jsonify({
+            'message': 'Login successful',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {'id': user.id, 'username': user.username}
+        }), 200
+    except ValueError:
+        # Invalid token
+        return jsonify({'message': 'Invalid token'}), 400
+
+@app.route('/update-profile', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    data = request.get_json()
+    user.full_name = data.get('full_name', user.full_name)
+    user.gender = data.get('gender', user.gender)
+    date_of_birth_str = data.get('date_of_birth', None)
+    if date_of_birth_str:
+        user.date_of_birth = datetime.strptime(date_of_birth_str, '%Y-%m-%d').date()
+    user.favorite_sport = data.get('favorite_sport', user.favorite_sport)
+    user.professional_level = data.get('professional_level', user.professional_level)
+    user.favorite_position = data.get('favorite_position', user.favorite_position)
+    user.location = data.get('location', user.location)
+    user.profile_picture = data.get('profile_picture', user.profile_picture)
+
+    db.session.commit()
+    return jsonify({'message': 'Profile updated successfully'}), 200
+
 
 @app.route('/logout', methods=['POST'])
 def logout():
     return jsonify({'message': 'Logout successful'}), 200
 
-#Courts routes
+# Courts routes
 @app.route('/add-court', methods=['POST'])
 def add_court():
     data = request.get_json()
@@ -94,7 +158,6 @@ def update_court():
     db.session.commit()  # Commit the changes to the database
     return jsonify({'message': 'Court updated successfully!'}), 200  # Return a success message
 
-
 @app.route('/delete-court', methods=['DELETE'])
 def delete_court():
     data = request.get_json()
@@ -121,7 +184,6 @@ def get_courts():
     courts = Court.query.all()
     court_data = [{'id': court.id, 'name': court.name, 'location': court.location, 'available_seats': court.available_seats} for court in courts]
     return jsonify(court_data)
-
 
 @app.route('/reserve', methods=['POST'])
 @jwt_required()
@@ -154,7 +216,7 @@ def reserve_court():
             return jsonify({'message': 'No seats available'}), 400
     else:
         return jsonify({'message': 'Court not found'}), 404
-    
+
 @app.route('/delete-reservation', methods=['DELETE'])
 @jwt_required()
 def delete_reservation():
@@ -173,8 +235,6 @@ def delete_reservation():
             return jsonify({'message': 'Reservation not found'}), 404
     else:
         return jsonify({'message': 'Court not found'}), 404
-
-
 
 from models import User, Court, Reservation  # Moved this line to the end
 
