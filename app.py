@@ -5,8 +5,11 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token, create_refresh_token
 import logging
 from datetime import datetime
+# Google authentication libraries
 from google.oauth2 import id_token
-from google.auth.transport import requests
+from google.auth.transport import requests as google_requests
+import base64
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -17,14 +20,12 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'fUTMIHsA7L1x9EnNoW4j2tWTjD4ga0xy'
+app.config['GOOGLE_CLIENT_ID'] = '136528838841-f4qtnf6psgdhr2d71953slrsh0uvoosm.apps.googleusercontent.com'
 db.init_app(app)
 bcrypt.init_app(app)
 
 jwt = JWTManager(app)
 migrate = Migrate(app, db)
-
-# Google OAuth 2.0 client ID
-GOOGLE_CLIENT_ID = 'your-google-client-id'
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -62,26 +63,55 @@ def login():
     else:
         return jsonify({'message': 'Invalid credentials'}), 401
 
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
 @app.route('/login/google', methods=['POST'])
 def google_login():
     data = request.get_json()
     token = data.get('token')
-    
+
+    app.logger.debug(f"Received token: {token}")
+
     try:
+        app.logger.debug(f"Token length: {len(token)}")
+
+        # Ensure token is Base64 encoded correctly by adding padding
+        token += '=' * (-len(token) % 4)
+
+        app.logger.debug(f"Padded token: {token}")
+
+        try:
+            base64.urlsafe_b64decode(token)
+        except base64.binascii.Error as e:
+            app.logger.error(f"Base64 decoding error: {e}")
+            return jsonify({'message': 'Invalid token encoding'}), 400
+
         # Verify the token
-        idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
+        idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), app.config['GOOGLE_CLIENT_ID'])
+
+        app.logger.debug(f"Token info: {idinfo}")
         
         if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
             return jsonify({'message': 'Invalid token issuer'}), 400
 
+        google_id = idinfo['sub']
         email = idinfo['email']
-        username = idinfo.get('name', email.split('@')[0])
+        full_name = idinfo.get('name', email.split('@')[0])
+        profile_picture = idinfo.get('picture', '')
 
         # Check if the user already exists
         user = User.query.filter_by(email=email).first()
         if not user:
             # Create a new user if not exists
-            user = User(username=username, email=email, password='')
+            user = User(
+                username=full_name,
+                email=email,
+                password='',  # Password is empty because it's a Google account
+                google_id=google_id,
+                full_name=full_name,
+                profile_picture=profile_picture
+            )
             db.session.add(user)
             db.session.commit()
 
@@ -94,8 +124,8 @@ def google_login():
             'refresh_token': refresh_token,
             'user': {'id': user.id, 'username': user.username}
         }), 200
-    except ValueError:
-        # Invalid token
+    except ValueError as e:
+        app.logger.error(f"Token verification error: {e}")
         return jsonify({'message': 'Invalid token'}), 400
 
 @app.route('/update-profile', methods=['PUT'])
