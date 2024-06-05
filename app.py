@@ -1,15 +1,14 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template, url_for
 from dbModel import db
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token, create_refresh_token
+from flask_mail import Mail, Message
 import logging
 from datetime import datetime
-# Google authentication libraries
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+from itsdangerous import URLSafeTimedSerializer
 import base64
-
+from models import User, Court, Reservation
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -21,11 +20,84 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'fUTMIHsA7L1x9EnNoW4j2tWTjD4ga0xy'
 app.config['GOOGLE_CLIENT_ID'] = '136528838841-f4qtnf6psgdhr2d71953slrsh0uvoosm.apps.googleusercontent.com'
+
+# Configure Flask-Mail
+app.config['MAIL_SERVER'] = 'smtp.example.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_USERNAME'] = 'your-email@example.com'
+app.config['MAIL_PASSWORD'] = 'your-email-password'
+app.config['MAIL_DEFAULT_SENDER'] = 'your-email@example.com'
+
+# Add the generated keys here
+app.config['SECRET_KEY'] = 'lJn1o9EHY2oBpYpSmLaE2n2vy_5N67sH'
+app.config['SECURITY_PASSWORD_SALT'] = 'UmyE4FW9roFPZDOGIh4pQOeYrSq9LGaz'
+
 db.init_app(app)
 bcrypt.init_app(app)
-
+mail = Mail(app)
 jwt = JWTManager(app)
 migrate = Migrate(app, db)
+
+def send_email(to, subject, template):
+    msg = Message(
+        subject,
+        recipients=[to],
+        html=template,
+        sender=app.config['MAIL_DEFAULT_SENDER']
+    )
+    mail.send(msg)
+
+def generate_confirmation_token(email):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    return serializer.dumps(email, salt=app.config['SECURITY_PASSWORD_SALT'])
+
+def confirm_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(token, salt=app.config['SECURITY_PASSWORD_SALT'], max_age=expiration)
+    except Exception as e:
+        return False
+    return email
+
+def mock_send_email(to, subject, template):
+    print(f"Mock email sent to {to} with subject '{subject}'")
+    print(template)
+
+@app.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json()
+    email = data.get('email')
+    user = User.query.filter_by(email=email).first()
+
+    if user:
+        token = generate_confirmation_token(user.email)
+        reset_url = url_for('reset_with_token', token=token, _external=True)
+        html = render_template('reset_password.html', reset_url=reset_url)
+        mock_send_email(user.email, 'Password Reset Requested', html)  # Use the mock function
+        return jsonify({'message': 'Password reset email sent'}), 200
+    else:
+        return jsonify({'message': 'Invalid email address'}), 400
+
+@app.route('/reset-password/<token>', methods=['POST'])
+def reset_with_token(token):
+    try:
+        email = confirm_token(token)
+    except:
+        return jsonify({'message': 'The reset link is invalid or has expired'}), 400
+
+    data = request.get_json()
+    new_password = data.get('new_password')
+    user = User.query.filter_by(email=email).first()
+
+    if user:
+        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.password = hashed_password
+        db.session.commit()
+        return jsonify({'message': 'Password has been reset'}), 200
+    else:
+        return jsonify({'message': 'Invalid user'}), 400
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -151,7 +223,6 @@ def update_profile():
     db.session.commit()
     return jsonify({'message': 'Profile updated successfully'}), 200
 
-
 @app.route('/logout', methods=['POST'])
 def logout():
     return jsonify({'message': 'Logout successful'}), 200
@@ -232,12 +303,12 @@ def reserve_court():
         if court.available_seats > 0:
             court.available_seats -= 1
             new_reservation = Reservation(
-                court_id=court.id, 
+                court_id=court.id,
                 user_id=current_user_id,
                 user_name=current_user.username,
                 court_name=court.name,
                 reserved_seat=court.available_seats + 1,
-                reserved_on=datetime.utcnow() 
+                reserved_on=datetime.utcnow()
             )
             db.session.add(new_reservation)
             db.session.commit()
@@ -266,7 +337,7 @@ def delete_reservation():
     else:
         return jsonify({'message': 'Court not found'}), 404
 
-from models import User, Court, Reservation  # Moved this line to the end
+from models import User, Court, Reservation  # Ensure this import is at the end
 
 if __name__ == '__main__':
     with app.app_context():
