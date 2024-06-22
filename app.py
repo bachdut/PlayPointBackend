@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer
 import base64
-from models import User, Court, Reservation
+from models import User, Court, Reservation, Product, GroupingProduct, Purchase
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -286,6 +286,12 @@ def get_courts():
     court_data = [{'id': court.id, 'name': court.name, 'location': court.location, 'available_seats': court.available_seats} for court in courts]
     return jsonify(court_data)
 
+def get_courts():
+    courts = Court.query.all()
+    court_data = [{'id': court.id, 'name': court.name, 'location': court.location, 'available_seats': court.available_seats} for court in courts]
+    return jsonify(court_data)
+
+
 @app.route('/reserve', methods=['POST'])
 @jwt_required()
 def reserve_court():
@@ -336,6 +342,135 @@ def delete_reservation():
             return jsonify({'message': 'Reservation not found'}), 404
     else:
         return jsonify({'message': 'Court not found'}), 404
+    
+
+#SHOP ROUTES
+
+@app.route('/add-product', methods=['POST'])
+def add_product():
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description')
+    price = data.get('price')
+    image_url = data.get('image_url')
+
+    if not all([name, description, price, image_url]):
+        return jsonify({'error': 'Missing data'}), 400
+
+    new_product = Product(
+        name=name,
+        description=description,
+        price=price,
+        image_url=image_url
+    )
+    db.session.add(new_product)
+    db.session.commit()
+
+    return jsonify({'message': 'Product added successfully'}), 201
+
+
+@app.route('/get-products', methods=['GET'])
+def get_products():
+    products = Product.query.all()
+    products_data = [{'id': product.id, 'name': product.name, 'description': product.description, 'price': product.price, 'image_url': product.image_url} for product in products]
+    return jsonify(products_data)
+
+@app.route('/delete-product/<int:product_id>', methods=['DELETE'])
+def delete_product(product_id):
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'message': 'Product not found'}), 404
+    
+    db.session.delete(product)
+    db.session.commit()
+    
+    return jsonify({'message': 'Product deleted successfully'})
+
+@app.route('/add-group-product', methods=['POST'])
+def add_group_product():
+    data = request.json
+    new_product = GroupingProduct(
+        name=data['name'],
+        description=data['description'],
+        price=data['price'],
+        image_url=data['image_url'],
+        original_price=data['original_price'],
+        discount_rate=data['discount_rate'],
+        total_needed=data['total_needed']
+    )
+    db.session.add(new_product)
+    db.session.commit()
+    return jsonify({'message': 'Grouping product added successfully'}), 201
+
+@app.route('/get-group-products', methods=['GET'])
+def get_group_products():
+    products = GroupingProduct.query.all()
+    products_data = [{'id': product.id, 'name': product.name, 'description': product.description, 'price': product.price, 'image_url': product.image_url, 'original_price': product.original_price, 'discount_rate': product.discount_rate, 'total_needed': product.total_needed, 'current_participants': product.current_participants} for product in products]
+    return jsonify(products_data)
+
+@app.route('/delete-group-product/<int:id>', methods=['DELETE'])
+def delete_group_product(id):
+    product = GroupingProduct.query.get(id)
+    if not product:
+        return jsonify({'message': 'Product not found'}), 404
+
+    db.session.delete(product)
+    db.session.commit()
+    return jsonify({'message': 'Product deleted successfully'}), 200
+
+#Join Purchase API calls:
+@app.route('/join-group-purchase', methods=['POST'])
+def join_group_purchase():
+    data = request.get_json()
+    product_id = data.get('product_id')
+    if not product_id:
+        return jsonify({'success': False, 'message': 'Product ID is required'}), 400
+    product = GroupingProduct.query.filter_by(id=product_id).first()
+    if not product:
+        return jsonify({'success': False, 'message': 'Product not found'}), 404
+    if product.current_participants >= product.total_needed:
+        return jsonify({'success': False, 'message': 'Group purchase already full'}), 400
+    product.current_participants += 1
+    db.session.commit()
+
+    return jsonify({'success': True, 'product': {
+        'id': product.id,
+        'name': product.name,
+        'description': product.description,
+        'price': product.price,
+        'image_url': product.image_url,
+        'original_price': product.original_price,
+        'discount_rate': product.discount_rate,
+        'total_needed': product.total_needed,
+        'current_participants': product.current_participants
+    }}), 200
+
+@app.route('/buy-product', methods=['POST'])
+def buy_product():
+    data = request.get_json()
+    product_id = data.get('product_id')
+    user_id = data.get('user_id')
+
+    if not product_id:
+        return jsonify({'error': 'Product ID is required'}), 400
+
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    # Record the purchase
+    purchase = Purchase(product_id=product_id, user_id=user_id)
+    db.session.add(purchase)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'Product purchased successfully'})
+    
+    # Record the purchase
+    purchase = Purchase(product_id=product_id, user_id=user_id)
+    db.session.add(purchase)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Product purchased successfully'})
 
 from models import User, Court, Reservation  # Ensure this import is at the end
 
