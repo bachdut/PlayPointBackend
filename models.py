@@ -54,5 +54,22 @@ class Product(db.Model):
     image_url = db.Column(db.String(200), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class GroupingProduct(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    description = db.Column(db.String(200), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    image_url = db.Column(db.String(200), nullable=False)
+    original_price = db.Column(db.Float, nullable=False)
+    discount_rate = db.Column(db.Float, nullable=False)
+    total_needed = db.Column(db.Integer, nullable=False)
+    current_participants = db.Column(db.Integer, default=0)
+
     def __repr__(self):
         return f'<Product {self.name}>'
+    
+class Purchase(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
