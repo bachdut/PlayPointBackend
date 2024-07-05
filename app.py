@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, url_for
+from flask import Flask, jsonify, request, render_template, url_for, send_from_directory
 from dbModel import db
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
@@ -9,18 +9,29 @@ from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer
 import base64
 from models import User, Court, Reservation, Product, GroupingProduct, Purchase
+from flask_uploads import UploadSet, configure_uploads, IMAGES
+from werkzeug.utils import secure_filename
+import os
 
 logging.basicConfig(level=logging.DEBUG)
+
+UPLOAD_FOLDER = os.path.join('uploads', 'profilePictures')
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 
 # Initialize SQLAlchemy and Bcrypt here without an app
 bcrypt = Bcrypt()
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'fUTMIHsA7L1x9EnNoW4j2tWTjD4ga0xy'
 app.config['GOOGLE_CLIENT_ID'] = '136528838841-f4qtnf6psgdhr2d71953slrsh0uvoosm.apps.googleusercontent.com'
-
+app.config['UPLOADED_PHOTOS_DEST'] = UPLOAD_FOLDER
+photos = UploadSet('photos', IMAGES)
+configure_uploads(app, photos)
 # Configure Flask-Mail
 app.config['MAIL_SERVER'] = 'smtp.example.com'
 app.config['MAIL_PORT'] = 587
@@ -208,20 +219,48 @@ def update_profile():
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    data = request.get_json()
-    user.full_name = data.get('full_name', user.full_name)
-    user.gender = data.get('gender', user.gender)
-    date_of_birth_str = data.get('date_of_birth', None)
-    if date_of_birth_str:
-        user.date_of_birth = datetime.strptime(date_of_birth_str, '%Y-%m-%d').date()
-    user.favorite_sport = data.get('favorite_sport', user.favorite_sport)
-    user.professional_level = data.get('professional_level', user.professional_level)
-    user.favorite_position = data.get('favorite_position', user.favorite_position)
-    user.location = data.get('location', user.location)
-    user.profile_picture = data.get('profile_picture', user.profile_picture)
+    try:
+        data = request.form.to_dict()
+        files = request.files
 
-    db.session.commit()
-    return jsonify({'message': 'Profile updated successfully'}), 200
+        logging.debug(f"Received data: {data}")
+        logging.debug(f"Received files: {files}")
+
+        if 'dateOfBirth' in data and data['dateOfBirth']:
+            user.date_of_birth = datetime.strptime(data['dateOfBirth'], '%Y-%m-%d').date()
+        else:
+            user.date_of_birth = user.date_of_birth
+
+        user.username = data.get('username', user.username)
+        user.gender = data.get('gender', user.gender)
+        user.phone = data.get('phone', user.phone)
+        user.address = data.get('address', user.address)
+        user.favorite_sport = data.get('favoriteSports', user.favorite_sport)
+        user.professional_level = data.get('skillLevel', user.professional_level)
+        user.favorite_position = data.get('sportRule', user.favorite_position)
+
+        # Ensure healthDeclaration is a boolean
+        health_declaration = data.get('healthDeclaration', user.health_declaration)
+        if isinstance(health_declaration, str):
+            health_declaration = health_declaration.lower() == 'true'
+        user.health_declaration = health_declaration
+
+        # Handle profile picture upload
+        if 'profilePicture' in files:
+            filename = secure_filename(f'{user.id}.jpg')
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            files['profilePicture'].save(filepath)
+            user.profile_picture = url_for('uploaded_file', filename=filename, _external=True)
+
+        db.session.commit()
+        return jsonify({'message': 'Profile updated successfully'}), 200
+    except ValueError as e:
+        logging.error(f"Error updating profile: {e}")
+        return jsonify({'message': 'Invalid data format', 'error': str(e)}), 400
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
+    
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -471,6 +510,37 @@ def buy_product():
     db.session.commit()
     
     return jsonify({'success': True, 'message': 'Product purchased successfully'})
+
+
+@app.route('/user-details', methods=['GET'])
+@jwt_required()
+def user_details():
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user_data = {
+        'username': user.username,
+        'dateOfBirth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+        'gender': user.gender or 'Not specified',
+        'healthDeclaration': user.health_declaration,
+        'email': user.email,
+        'phone': user.phone or '',
+        'address': user.address or '',
+        'favoriteSports': user.favorite_sport or '',
+        'skillLevel': user.professional_level or '',
+        'sportRule': user.favorite_position or '',
+        'profilePicture': user.profile_picture
+    }
+
+    return jsonify(user_data), 200
+
+
+@app.route('/uploads/profilePictures/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 
 from models import User, Court, Reservation  # Ensure this import is at the end
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from dbModel import db
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, Boolean
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -16,6 +16,9 @@ class User(db.Model):
     professional_level = db.Column(db.String(50), nullable=True)
     favorite_position = db.Column(db.String(50), nullable=True)
     location = db.Column(db.String(100), nullable=True)
+    health_declaration = db.Column(db.Boolean, nullable=True)
+    phone = db.Column(db.String(15), nullable=True)
+    address = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
