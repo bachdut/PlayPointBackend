@@ -269,18 +269,19 @@ def logout():
 # Courts routes
 @app.route('/add-court', methods=['POST'])
 def add_court():
-    data = request.get_json()
-    existing_court = Court.query.filter_by(name=data['name']).first()
-    if existing_court:
-        return jsonify({'message': 'Court with this name already exists!'}), 400
+    data = request.json
     new_court = Court(
         name=data['name'],
         location=data['location'],
-        available_seats=data['available_seats']
+        available_seats=data['available_seats'],
+        price=data['price'],
+        available_date=datetime.strptime(data['available_date'], '%Y-%m-%d').date(),
+        available_time=data['available_time'],
+        image=data['image']
     )
     db.session.add(new_court)
     db.session.commit()
-    return jsonify({'message': 'Court added successfully!'}), 201
+    return jsonify({'message': 'Court added successfully'}), 201
 
 @app.route('/update-court', methods=['PUT'])
 def update_court():
@@ -319,17 +320,24 @@ def delete_court():
         db.session.rollback()
         return jsonify({'message': 'An error occurred while trying to delete the court: ' + str(e)}), 500
 
-@app.route('/courts')
+@app.route('/courts', methods=['GET'])
 def get_courts():
     courts = Court.query.all()
-    court_data = [{'id': court.id, 'name': court.name, 'location': court.location, 'available_seats': court.available_seats} for court in courts]
-    return jsonify(court_data)
-
-def get_courts():
-    courts = Court.query.all()
-    court_data = [{'id': court.id, 'name': court.name, 'location': court.location, 'available_seats': court.available_seats} for court in courts]
-    return jsonify(court_data)
-
+    court_list = [
+        {
+            'name': court.name,
+            'location': court.location,
+            'available_seats': court.available_seats,
+            'price': court.price,
+            'available_date': court.available_date.strftime('%Y-%m-%d'),
+            'available_time': court.available_time,
+            'image': court.image,
+            'id': court.id,
+            'players_joined': court.players_joined
+        }
+        for court in courts
+    ]
+    return jsonify(court_list), 200
 
 @app.route('/reserve', methods=['POST'])
 @jwt_required()
@@ -347,6 +355,7 @@ def reserve_court():
 
         if court.available_seats > 0:
             court.available_seats -= 1
+            court.players_joined += 1
             new_reservation = Reservation(
                 court_id=court.id,
                 user_id=current_user_id,
@@ -362,7 +371,6 @@ def reserve_court():
             return jsonify({'message': 'No seats available'}), 400
     else:
         return jsonify({'message': 'Court not found'}), 404
-
 @app.route('/delete-reservation', methods=['DELETE'])
 @jwt_required()
 def delete_reservation():
@@ -536,6 +544,26 @@ def user_details():
 
     return jsonify(user_data), 200
 
+@app.route('/court-details/<int:court_id>', methods=['GET'])
+def get_court_details(court_id):
+    court = Court.query.get(court_id)
+    if not court:
+        return jsonify({'error': 'Court not found'}), 404
+
+    court_dict = {
+        'name': court.name,
+        'location': court.location,
+        'available_seats': court.available_seats,
+        'price': court.price,
+        'available_date': court.available_date.strftime('%Y-%m-%d'),
+        'available_time': court.available_time,
+        'image': court.image,
+        'category': court.category,
+        'level': court.level_of_players,
+        'players_joined': court.players_joined
+    }
+
+    return jsonify(court_dict), 200
 
 @app.route('/uploads/profilePictures/<filename>')
 def uploaded_file(filename):
