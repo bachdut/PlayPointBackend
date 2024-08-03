@@ -371,6 +371,7 @@ def reserve_court():
             return jsonify({'message': 'No seats available'}), 400
     else:
         return jsonify({'message': 'Court not found'}), 404
+    
 @app.route('/delete-reservation', methods=['DELETE'])
 @jwt_required()
 def delete_reservation():
@@ -382,6 +383,7 @@ def delete_reservation():
         reservation = Reservation.query.filter_by(court_id=court.id, user_id=current_user_id).first()
         if reservation:
             court.available_seats += 1
+            court.players_joined -= 1 
             db.session.delete(reservation)
             db.session.commit()
             return jsonify({'message': 'Reservation deleted', 'remaining_seats': court.available_seats}), 200
@@ -545,12 +547,17 @@ def user_details():
     return jsonify(user_data), 200
 
 @app.route('/court-details/<int:court_id>', methods=['GET'])
+@jwt_required()
 def get_court_details(court_id):
+    current_user_id = get_jwt_identity()
     court = Court.query.get(court_id)
     if not court:
         return jsonify({'error': 'Court not found'}), 404
-
-    court_dict = {
+    
+    reservation = Reservation.query.filter_by(court_id=court.id, user_id=current_user_id).first()
+    has_reserved = reservation is not None
+    
+    court_details = {
         'name': court.name,
         'location': court.location,
         'available_seats': court.available_seats,
@@ -558,12 +565,12 @@ def get_court_details(court_id):
         'available_date': court.available_date.strftime('%Y-%m-%d'),
         'available_time': court.available_time,
         'image': court.image,
-        'category': court.category,
         'level': court.level_of_players,
-        'players_joined': court.players_joined
+        'category': court.category,
+        'players_joined': court.players_joined,
+        'has_reserved': has_reserved 
     }
-
-    return jsonify(court_dict), 200
+    return jsonify(court_details), 200
 
 @app.route('/uploads/profilePictures/<filename>')
 def uploaded_file(filename):
