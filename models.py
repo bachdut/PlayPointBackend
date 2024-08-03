@@ -21,6 +21,7 @@ class User(db.Model):
     address = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    reservations = db.relationship('Reservation', backref='user', lazy=True)
 
     def __repr__(self):
         return f"<User {self.username}>"
@@ -30,9 +31,17 @@ class Court(db.Model):
     name = db.Column(db.String(100), nullable=False)
     location = db.Column(db.String(100), nullable=False)
     available_seats = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    available_date = db.Column(db.Date, nullable=False, default=datetime(1970, 1, 1))
+    available_time = db.Column(db.String(50), nullable=False, default='00:00 - 00:00')
+    image = db.Column(db.String(200), nullable=True)
+    level_of_players = db.Column(db.String(50), nullable=True, default='Beginner')
+    category = db.Column(db.String(50), nullable=True, default='General')
+    players_joined = db.Column(db.Integer, nullable=False, default=0)
+    reservations = db.relationship('Reservation', backref='court', lazy=True)
 
     def __repr__(self):
-        return f"<Court {self.name}, Location: {self.location}>"
+        return f"Court('{self.name}', '{self.location}', '{self.price}', '{self.available_date}', '{self.available_time}', '{self.image}', '{self.available_seats}', '{self.level_of_players}', '{self.category}', '{self.players_joined}')"
 
 class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -41,14 +50,10 @@ class Reservation(db.Model):
     user_name = db.Column(db.String(120), nullable=False)
     court_name = db.Column(db.String(120), nullable=False)
     reserved_seat = db.Column(db.Integer, nullable=False)
-    reserved_on = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    user = db.relationship('User', backref=db.backref('reservations', lazy='dynamic'))
-    court = db.relationship('Court', backref=db.backref('reservations', lazy='dynamic'))
+    reserved_on = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     def __repr__(self):
         return f'<Reservation {self.user_name} for {self.court_name}>'
-    
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
