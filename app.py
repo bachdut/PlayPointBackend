@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer
 import base64
-from models import User, Court, Reservation, Product, GroupingProduct, Purchase
+from models import User, Court, Reservation, Product, GroupingProduct, Purchase, Game
 from flask_uploads import UploadSet, configure_uploads, IMAGES
 from werkzeug.utils import secure_filename
 import os
@@ -339,6 +339,15 @@ def get_courts():
     ]
     return jsonify(court_list), 200
 
+@app.route('/available-courts', methods=['GET'])
+@jwt_required()
+def get_available_courts():
+    courts = Court.query.all()
+    available_courts = [court for court in courts if court.players_joined == 0]
+    court_list = [{'id': court.id, 'name': court.name} for court in available_courts]
+    return jsonify(court_list), 200
+
+
 @app.route('/reserve', methods=['POST'])
 @jwt_required()
 def reserve_court():
@@ -571,6 +580,163 @@ def get_court_details(court_id):
         'has_reserved': has_reserved 
     }
     return jsonify(court_details), 200
+
+
+
+#Game Events API calls
+@app.route('/court/<int:court_id>/games', methods=['GET'])
+def get_court_games(court_id):
+    date_str = request.args.get('date')
+    try:
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format, should be YYYY-MM-DD'}), 400
+
+    games = Game.query.filter(
+        Game.court_id == court_id,
+        db.func.date(Game.start_time) == date
+    ).all()
+
+    if not games:
+        return jsonify({'games': []}), 200
+
+    games_list = [
+        {
+            'id': game.id,
+            'start_time': game.start_time.strftime('%H:%M'),
+            'end_time': game.end_time.strftime('%H:%M'),
+            'players_joined': game.players_joined
+        } for game in games
+    ]
+    
+    return jsonify({'games': games_list}), 200
+
+@app.route('/games', methods=['POST'])
+@jwt_required()
+def create_game():
+    data = request.get_json()
+    court_id = data.get('court_id')
+    start_time_str = data.get('start_time')
+    end_time_str = data.get('end_time')
+
+    if not court_id or not start_time_str or not end_time_str:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    try:
+        start_time = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M')
+        end_time = datetime.strptime(end_time_str, '%Y-%m-%d %H:%M')
+    except ValueError:
+        return jsonify({'error': 'Invalid date format, should be YYYY-MM-DD HH:MM'}), 400
+
+    overlapping_games = Game.query.filter(
+        Game.court_id == court_id,
+        Game.start_time < end_time,
+        Game.end_time > start_time
+    ).all()
+
+    if overlapping_games:
+        return jsonify({'error': 'Time slot overlaps with existing game(s)'}), 400
+
+    new_game = Game(
+        court_id=court_id,
+        user_id=get_jwt_identity(),
+        start_time=start_time,
+        end_time=end_time,
+        players_joined=0  # Initializing players joined to 0
+    )
+
+    db.session.add(new_game)
+    db.session.commit()
+
+    return jsonify({'message': 'Game created successfully', 'game_id': new_game.id}), 201
+
+@app.route('/games/<int:game_id>', methods=['DELETE'])
+@jwt_required()
+def delete_game(game_id):
+    current_user_id = get_jwt_identity()
+    
+    # Find the game by ID and ensure it belongs to the current user
+    game = Game.query.filter_by(id=game_id, user_id=current_user_id).first()
+    if not game:
+        return jsonify({'message': 'Game not found or you do not have permission to delete this game'}), 404
+
+    # Ensure players_joined is not None and proceed with the check
+    if (game.players_joined or 0) > 1:
+        return jsonify({'message': 'Cannot delete a game with players already joined'}), 400
+
+    db.session.delete(game)
+    db.session.commit()
+
+    return jsonify({'message': 'Game deleted successfully'}), 200
+
+
+@app.route('/court/<int:court_id>/available-times', methods=['GET'])
+def get_available_time_slots(court_id):
+    date_str = request.args.get('date')
+    try:
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format, should be YYYY-MM-DD'}), 400
+
+    court = Court.query.get(court_id)
+    if not court:
+        return jsonify({'error': 'Court not found'}), 404
+
+    # Parse the available time for the court (e.g., "14:00 - 16:00")
+    available_time_str = court.available_time
+    start_str, end_str = available_time_str.split(" - ")
+    court_start_time = datetime.strptime(start_str, '%H:%M').time()
+    court_end_time = datetime.strptime(end_str, '%H:%M').time()
+
+    # Combine the date with the court's available start and end times
+    court_opening_time = datetime.combine(date, court_start_time)
+    court_closing_time = datetime.combine(date, court_end_time)
+
+    # Fetch all games for the court on the given date
+    games = Game.query.filter(
+        Game.court_id == court_id,
+        db.func.date(Game.start_time) == date
+    ).order_by(Game.start_time).all()
+
+    available_slots = []
+
+    # Iterate through the games and find gaps between them
+    previous_end_time = court_opening_time
+
+    for game in games:
+        if previous_end_time < game.start_time:
+            available_slots.append({
+                'start_time': previous_end_time.strftime('%H:%M'),
+                'end_time': game.start_time.strftime('%H:%M')
+            })
+        previous_end_time = game.end_time
+
+    # Check for any time available after the last game until the court closes
+    if previous_end_time < court_closing_time:
+        available_slots.append({
+            'start_time': previous_end_time.strftime('%H:%M'),
+            'end_time': court_closing_time.strftime('%H:%M')
+        })
+
+    return jsonify({'available_slots': available_slots}), 200
+
+@app.route('/my-hosted-games', methods=['GET'])
+@jwt_required()
+def get_my_hosted_games():
+    user_id = get_jwt_identity()
+    hosted_games = Game.query.filter_by(user_id=user_id).all()
+
+    games_list = [
+        {
+            'id': game.id,
+            'court_name': game.court.name,
+            'start_time': game.start_time.strftime('%Y-%m-%d %H:%M'),
+            'end_time': game.end_time.strftime('%Y-%m-%d %H:%M')
+        }
+        for game in hosted_games
+    ]
+
+    return jsonify(games_list), 200
 
 @app.route('/uploads/profilePictures/<filename>')
 def uploaded_file(filename):

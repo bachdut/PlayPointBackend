@@ -81,3 +81,19 @@ class Purchase(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Game(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    court_id = db.Column(db.Integer, db.ForeignKey('court.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    players_joined = db.Column(db.Integer, default=0) 
+
+    court = db.relationship('Court', backref=db.backref('games', lazy=True))
+    user = db.relationship('User', backref=db.backref('games', lazy=True))
+
+    def __repr__(self):
+        return f'<Game {self.court_id} by {self.user_id}>'
