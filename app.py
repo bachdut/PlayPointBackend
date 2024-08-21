@@ -350,57 +350,63 @@ def get_available_courts():
 
 @app.route('/reserve', methods=['POST'])
 @jwt_required()
-def reserve_court():
+def reserve_game():
     current_user_id = get_jwt_identity()
     current_user = User.query.get(current_user_id)
     data = request.get_json()
-    court_name = data.get('court_name')
-    court = Court.query.filter_by(name=court_name).first()
-    if court:
-        # Check if the user already has a reservation for this court
-        existing_reservation = Reservation.query.filter_by(court_id=court.id, user_id=current_user_id).first()
-        if existing_reservation:
-            return jsonify({'message': 'You already have a reservation for this court'}), 400
+    game_id = data.get('game_id')
+    print(f"Attempting to reserve game with ID: {game_id}")  # Log the game ID
 
-        if court.available_seats > 0:
-            court.available_seats -= 1
-            court.players_joined += 1
-            new_reservation = Reservation(
-                court_id=court.id,
-                user_id=current_user_id,
-                user_name=current_user.username,
-                court_name=court.name,
-                reserved_seat=court.available_seats + 1,
-                reserved_on=datetime.utcnow()
-            )
-            db.session.add(new_reservation)
-            db.session.commit()
-            return jsonify({'message': 'Reservation successful', 'remaining_seats': court.available_seats}), 200
-        else:
-            return jsonify({'message': 'No seats available'}), 400
+    game = Game.query.get(game_id)
+    if game:
+        app.logger.debug(f'Game found: {game}')
     else:
-        return jsonify({'message': 'Court not found'}), 404
+        app.logger.debug(f'No game found with ID: {game_id}')
+        return jsonify({'message': 'Game not found'}), 404
+
+    court = game.court
+
+    # Check if the user already has a reservation for this game
+    existing_reservation = Reservation.query.filter_by(game_id=game_id, user_id=current_user_id).first()
+    if existing_reservation:
+        return jsonify({'message': 'You already have a reservation for this game'}), 400
+
+    if court.available_seats > 0:
+        court.available_seats -= 1
+        game.players_joined += 1
+        new_reservation = Reservation(
+            game_id=game.id,
+            user_id=current_user_id,
+            user_name=current_user.username,
+            reserved_seat=court.available_seats + 1,
+            reserved_on=datetime.utcnow()
+        )
+        db.session.add(new_reservation)
+        db.session.commit()
+        return jsonify({'message': 'Reservation successful', 'remaining_seats': court.available_seats}), 200
+    else:
+        return jsonify({'message': 'No seats available'}), 400
     
 @app.route('/delete-reservation', methods=['DELETE'])
 @jwt_required()
 def delete_reservation():
     current_user_id = get_jwt_identity()
     data = request.get_json()
-    court_name = data.get('court_name')
-    court = Court.query.filter_by(name=court_name).first()
-    if court:
-        reservation = Reservation.query.filter_by(court_id=court.id, user_id=current_user_id).first()
-        if reservation:
-            court.available_seats += 1
-            court.players_joined -= 1 
-            db.session.delete(reservation)
-            db.session.commit()
-            return jsonify({'message': 'Reservation deleted', 'remaining_seats': court.available_seats}), 200
-        else:
-            return jsonify({'message': 'Reservation not found'}), 404
-    else:
-        return jsonify({'message': 'Court not found'}), 404
+    game_id = data.get('game_id')
     
+    game = Game.query.get(game_id)
+    if not game:
+        return jsonify({'message': 'Game not found'}), 404
+
+    reservation = Reservation.query.filter_by(game_id=game_id, user_id=current_user_id).first()
+    if reservation:
+        game.court.available_seats += 1
+        game.players_joined -= 1
+        db.session.delete(reservation)
+        db.session.commit()
+        return jsonify({'message': 'Reservation deleted', 'remaining_seats': game.court.available_seats}), 200
+    else:
+        return jsonify({'message': 'Reservation not found'}), 404
 
 #SHOP ROUTES
 
@@ -555,15 +561,16 @@ def user_details():
 
     return jsonify(user_data), 200
 
-@app.route('/court-details/<int:court_id>', methods=['GET'])
+@app.route('/court-details/<int:game_id>', methods=['GET'])
 @jwt_required()
-def get_court_details(court_id):
+def get_game_details(game_id):
     current_user_id = get_jwt_identity()
-    court = Court.query.get(court_id)
-    if not court:
-        return jsonify({'error': 'Court not found'}), 404
+    game = Game.query.get(game_id)
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
     
-    reservation = Reservation.query.filter_by(court_id=court.id, user_id=current_user_id).first()
+    court = game.court  # Access the associated court via the game relationship
+    reservation = Reservation.query.filter_by(game_id=game.id, user_id=current_user_id).first()
     has_reserved = reservation is not None
     
     court_details = {
@@ -576,7 +583,7 @@ def get_court_details(court_id):
         'image': court.image,
         'level': court.level_of_players,
         'category': court.category,
-        'players_joined': court.players_joined,
+        'players_joined': game.players_joined, 
         'has_reserved': has_reserved 
     }
     return jsonify(court_details), 200
@@ -737,6 +744,53 @@ def get_my_hosted_games():
     ]
 
     return jsonify(games_list), 200
+
+@app.route('/open-games', methods=['GET'])
+def get_open_games():
+    location = request.args.get('location')
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    max_price = request.args.get('price')
+    level_of_players = request.args.get('level_of_players')  # Updated field
+
+    # Convert date strings to datetime objects if provided
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+
+    # Query to get open games
+    games_query = Game.query.join(Court)
+
+    if location:
+        games_query = games_query.filter(Court.location.ilike(f'%{location}%'))
+    if start_date:
+        games_query = games_query.filter(Game.start_time >= start_date)
+    if end_date:
+        games_query = games_query.filter(Game.end_time <= end_date)
+    if max_price:
+        games_query = games_query.filter(Court.price <= float(max_price))
+    if level_of_players:  # Updated filter
+        games_query = games_query.filter(Court.level_of_players.ilike(f'%{level_of_players}%'))
+
+    open_games = games_query.all()
+
+    games_list = [
+        {
+        'id': game.id,
+        'court_id': game.court_id, 
+        'court_name': game.court.name,
+        'location': game.court.location,
+        'start_time': game.start_time.strftime('%Y-%m-%d %H:%M'),
+        'end_time': game.end_time.strftime('%Y-%m-%d %H:%M'),
+        'price': game.court.price,
+        'level_of_players': game.court.level_of_players,
+        'players_joined': game.players_joined,
+        }
+        for game in open_games
+    ]
+
+    return jsonify({'games': games_list}), 200
+
+
 
 @app.route('/uploads/profilePictures/<filename>')
 def uploaded_file(filename):
