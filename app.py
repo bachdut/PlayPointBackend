@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request, render_template, url_for, send_from_d
 from dbModel import db
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token, create_refresh_token
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token, create_refresh_token, get_jwt
 from flask_mail import Mail, Message
 import logging
 from datetime import datetime
@@ -109,6 +109,26 @@ def reset_with_token(token):
         return jsonify({'message': 'Password has been reset'}), 200
     else:
         return jsonify({'message': 'Invalid user'}), 400
+    
+@app.route('/users', methods=['GET'])
+@jwt_required()
+def get_all_users():
+    try:
+        users = User.query.all()
+        user_list = []
+        for user in users:
+            user_data = {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                # Add any other user attributes you want to include
+            }
+            user_list.append(user_data)
+        return jsonify(user_list), 200
+    except Exception as e:
+        app.logger.error(f"Error fetching users: {str(e)}")
+        return jsonify({'message': 'Failed to fetch users'}), 500
+    
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -145,6 +165,13 @@ def login():
         }), 200
     else:
         return jsonify({'message': 'Invalid credentials'}), 401
+    
+@app.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    jti = get_jwt()["jti"]  # JWT ID, a unique identifier for a JWT
+    # You would normally add this JTI to a blocklist so it can't be used again
+    return jsonify({"message": "Successfully logged out"}), 200
 
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -261,10 +288,6 @@ def update_profile():
         logging.error(f"Unexpected error: {e}")
         return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
     
-
-@app.route('/logout', methods=['POST'])
-def logout():
-    return jsonify({'message': 'Logout successful'}), 200
 
 # Courts routes
 @app.route('/add-court', methods=['POST'])
