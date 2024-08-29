@@ -38,22 +38,22 @@ class Court(db.Model):
     level_of_players = db.Column(db.String(50), nullable=True, default='Beginner')
     category = db.Column(db.String(50), nullable=True, default='General')
     players_joined = db.Column(db.Integer, nullable=False, default=0)
-    reservations = db.relationship('Reservation', backref='court', lazy=True)
 
     def __repr__(self):
         return f"Court('{self.name}', '{self.location}', '{self.price}', '{self.available_date}', '{self.available_time}', '{self.image}', '{self.available_seats}', '{self.level_of_players}', '{self.category}', '{self.players_joined}')"
-
+    
 class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    court_id = db.Column(db.Integer, db.ForeignKey('court.id'), nullable=False)
+    game_id = db.Column(db.Integer, db.ForeignKey('game.id', name='fk_game_id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user_name = db.Column(db.String(120), nullable=False)
-    court_name = db.Column(db.String(120), nullable=False)
+    user_name = db.Column(db.String(80), nullable=False)
     reserved_seat = db.Column(db.Integer, nullable=False)
-    reserved_on = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    reserved_on = db.Column(db.DateTime, default=datetime.utcnow)
+    game = db.relationship('Game', backref=db.backref('reservations', lazy=True))
 
     def __repr__(self):
-        return f'<Reservation {self.user_name} for {self.court_name}>'
+        return f'<Reservation {self.user_name} for game {self.game_id}>'
+    
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
@@ -81,3 +81,19 @@ class Purchase(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Game(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    court_id = db.Column(db.Integer, db.ForeignKey('court.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    players_joined = db.Column(db.Integer, default=0) 
+
+    court = db.relationship('Court', backref=db.backref('games', lazy=True))
+    user = db.relationship('User', backref=db.backref('games', lazy=True))
+
+    def __repr__(self):
+        return f'<Game {self.court_id} by {self.user_id}>'
