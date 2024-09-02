@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer
 import base64
+import json
 from models import User, Court, Reservation, Product, GroupingProduct, Purchase, Game
 from flask_uploads import UploadSet, configure_uploads, IMAGES
 from werkzeug.utils import secure_filename
@@ -293,14 +294,17 @@ def update_profile():
 @app.route('/add-court', methods=['POST'])
 def add_court():
     data = request.json
+    time_slots = data.get('time_slots', [])
+
     new_court = Court(
         name=data['name'],
         location=data['location'],
         available_seats=data['available_seats'],
         price=data['price'],
-        available_date=datetime.strptime(data['available_date'], '%Y-%m-%d').date(),
-        available_time=data['available_time'],
-        image=data['image']
+        time_slots=json.dumps(time_slots),  # Store as JSON string
+        image=data['image'],
+        level_of_players=data.get('level_of_players', 'Beginner'),
+        category=data.get('category', 'General')
     )
     db.session.add(new_court)
     db.session.commit()
@@ -325,15 +329,16 @@ def update_court():
 @app.route('/delete-court', methods=['DELETE'])
 def delete_court():
     data = request.get_json()
-    court_name = data['name']  # Get the court name from the request body
-    court = Court.query.filter_by(name=court_name).first()  # Find the court by its name
+
+    # Assuming you want to delete by court_id instead of name
+    court_id = data.get('court_id')
+
+    if not court_id:
+        return jsonify({'message': 'Court ID is required'}), 400
+
+    court = Court.query.get(court_id)
     if not court:
         return jsonify({'message': 'Court not found'}), 404
-
-    # Check if there are any reservations for the court
-    reservations = Reservation.query.filter_by(court_id=court.id).all()
-    if reservations:
-        return jsonify({'message': 'Court cannot be deleted because it is reserved'}), 400
 
     try:
         db.session.delete(court)
@@ -341,7 +346,8 @@ def delete_court():
         return jsonify({'message': 'Court deleted successfully!'}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': 'An error occurred while trying to delete the court: ' + str(e)}), 500
+        return jsonify({'message': f'An error occurred while trying to delete the court: {str(e)}'}), 500
+    
 
 @app.route('/courts', methods=['GET'])
 def get_courts():
@@ -352,8 +358,7 @@ def get_courts():
             'location': court.location,
             'available_seats': court.available_seats,
             'price': court.price,
-            'available_date': court.available_date.strftime('%Y-%m-%d'),
-            'available_time': court.available_time,
+            'time_slots': court.time_slots,  # Return time slots as JSON
             'image': court.image,
             'id': court.id,
             'players_joined': court.players_joined
@@ -361,6 +366,7 @@ def get_courts():
         for court in courts
     ]
     return jsonify(court_list), 200
+
 
 @app.route('/available-courts', methods=['GET'])
 @jwt_required()
@@ -584,32 +590,37 @@ def user_details():
 
     return jsonify(user_data), 200
 
-@app.route('/court-details/<int:game_id>', methods=['GET'])
+@app.route('/game-details/<int:game_id>', methods=['GET'])
 @jwt_required()
 def get_game_details(game_id):
-    current_user_id = get_jwt_identity()
+    current_user_id = get_jwt_identity()  # Get the current user ID from the token
     game = Game.query.get(game_id)
     if not game:
         return jsonify({'error': 'Game not found'}), 404
-    
-    court = game.court  # Access the associated court via the game relationship
-    reservation = Reservation.query.filter_by(game_id=game.id, user_id=current_user_id).first()
-    has_reserved = reservation is not None
-    
-    court_details = {
+
+    court = game.court
+    if not court:
+        return jsonify({'error': 'Court not found'}), 404
+
+    # Check if the current user has already joined the game
+    has_reserved = Reservation.query.filter_by(game_id=game.id, user_id=current_user_id).first() is not None
+
+    return jsonify({
+        'game_id': game.id,
+        'court_id': court.id,
         'name': court.name,
         'location': court.location,
         'available_seats': court.available_seats,
         'price': court.price,
-        'available_date': court.available_date.strftime('%Y-%m-%d'),
-        'available_time': court.available_time,
+        'time_slots': json.loads(court.time_slots),
         'image': court.image,
-        'level': court.level_of_players,
+        'level_of_players': court.level_of_players,
         'category': court.category,
-        'players_joined': game.players_joined, 
+        'players_joined': game.players_joined,
+        'start_time': game.start_time.strftime('%Y-%m-%d %H:%M'),
+        'end_time': game.end_time.strftime('%Y-%m-%d %H:%M'),
         'has_reserved': has_reserved 
-    }
-    return jsonify(court_details), 200
+    }), 200
 
 
 
@@ -712,41 +723,31 @@ def get_available_time_slots(court_id):
     if not court:
         return jsonify({'error': 'Court not found'}), 404
 
-    # Parse the available time for the court (e.g., "14:00 - 16:00")
-    available_time_str = court.available_time
-    start_str, end_str = available_time_str.split(" - ")
-    court_start_time = datetime.strptime(start_str, '%H:%M').time()
-    court_end_time = datetime.strptime(end_str, '%H:%M').time()
-
-    # Combine the date with the court's available start and end times
-    court_opening_time = datetime.combine(date, court_start_time)
-    court_closing_time = datetime.combine(date, court_end_time)
+    all_time_slots = json.loads(court.time_slots)  # Assuming time slots are stored as JSON
 
     # Fetch all games for the court on the given date
-    games = Game.query.filter(
+    games_on_date = Game.query.filter(
         Game.court_id == court_id,
         db.func.date(Game.start_time) == date
-    ).order_by(Game.start_time).all()
+    ).all()
 
-    available_slots = []
-
-    # Iterate through the games and find gaps between them
-    previous_end_time = court_opening_time
-
-    for game in games:
-        if previous_end_time < game.start_time:
-            available_slots.append({
-                'start_time': previous_end_time.strftime('%H:%M'),
-                'end_time': game.start_time.strftime('%H:%M')
-            })
-        previous_end_time = game.end_time
-
-    # Check for any time available after the last game until the court closes
-    if previous_end_time < court_closing_time:
-        available_slots.append({
-            'start_time': previous_end_time.strftime('%H:%M'),
-            'end_time': court_closing_time.strftime('%H:%M')
+    booked_slots = []
+    for game in games_on_date:
+        booked_slots.append({
+            'start_time': game.start_time.strftime('%H:%M'),
+            'end_time': game.end_time.strftime('%H:%M')
         })
+
+    # Filter out the booked slots from all time slots
+    available_slots = []
+    for slot in all_time_slots:
+        slot_start_time, slot_end_time = slot.split('-')
+        if not any(
+            booked['start_time'] <= slot_start_time < booked['end_time'] or
+            booked['start_time'] < slot_end_time <= booked['end_time']
+            for booked in booked_slots
+        ):
+            available_slots.append(slot)
 
     return jsonify({'available_slots': available_slots}), 200
 
