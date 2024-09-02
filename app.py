@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token, create_refresh_token, get_jwt
 from flask_mail import Mail, Message
 import logging
+import random 
 from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer
 import base64
@@ -815,7 +816,55 @@ def get_open_games():
     return jsonify({'games': games_list}), 200
 
 
+@app.route('/shuffle-game/<int:game_id>', methods=['POST'])
+@jwt_required()
+def shuffle_game(game_id):
+    game = Game.query.get(game_id)
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
 
+    shuffle_type = request.json.get('shuffle_type')
+
+    # Fetch players who have joined this game
+    reservations = Reservation.query.filter_by(game_id=game_id).all()
+    if not reservations:
+        return jsonify({'error': 'No players to shuffle'}), 400
+
+    player_ids = [res.user_id for res in reservations]
+    players = User.query.filter(User.id.in_(player_ids)).all()
+
+    team1 = []
+    team2 = []
+
+    if shuffle_type == 'random':
+        # Random shuffle
+        random.shuffle(players)
+        team1 = players[::2]
+        team2 = players[1::2]
+    elif shuffle_type == 'level' or shuffle_type == 'fair':
+        # Handle None values for professional_level by setting a default value
+        for player in players:
+            if player.professional_level is None:
+                player.professional_level = 'No Level'  # Or any default value like 'Mid Level'
+
+        # Sort players by their level and then split into two teams
+        players.sort(key=lambda x: x.professional_level, reverse=True)
+        
+        for i, player in enumerate(players):
+            if len(team1) > len(team2):
+                team2.append(player)
+            else:
+                team1.append(player)
+    else:
+        return jsonify({'error': 'Invalid shuffle type'}), 400
+
+    # Return the shuffled teams
+    return jsonify({
+        'team1': [player.username for player in team1],
+        'team2': [player.username for player in team2]
+    }), 200
+
+#Profile pic 
 @app.route('/uploads/profilePictures/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
