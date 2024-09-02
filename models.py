@@ -1,6 +1,7 @@
 from datetime import datetime
 from dbModel import db
 from sqlalchemy import Column, DateTime, Boolean
+import json
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -26,21 +27,40 @@ class User(db.Model):
     def __repr__(self):
         return f"<User {self.username}>"
 
+import json
+from sqlalchemy import Column, Integer, String, Float, Text
+
 class Court(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     location = db.Column(db.String(100), nullable=False)
     available_seats = db.Column(db.Integer, nullable=False)
     price = db.Column(db.Float, nullable=False, default=0.0)
-    available_date = db.Column(db.Date, nullable=False, default=datetime(1970, 1, 1))
-    available_time = db.Column(db.String(50), nullable=False, default='00:00 - 00:00')
+    time_slots = db.Column(db.Text, nullable=True)  # Store available time slots as JSON string
     image = db.Column(db.String(200), nullable=True)
     level_of_players = db.Column(db.String(50), nullable=True, default='Beginner')
     category = db.Column(db.String(50), nullable=True, default='General')
     players_joined = db.Column(db.Integer, nullable=False, default=0)
 
     def __repr__(self):
-        return f"Court('{self.name}', '{self.location}', '{self.price}', '{self.available_date}', '{self.available_time}', '{self.image}', '{self.available_seats}', '{self.level_of_players}', '{self.category}', '{self.players_joined}')"
+        return f"Court('{self.name}', '{self.location}', '{self.price}', '{self.time_slots}', '{self.image}', '{self.available_seats}', '{self.level_of_players}', '{self.category}', '{self.players_joined}')"
+
+    def set_time_slots(self, date, slots):
+        """Set time slots for a specific date."""
+        if self.time_slots:
+            time_slots = json.loads(self.time_slots)
+        else:
+            time_slots = {}
+
+        time_slots[date] = slots
+        self.time_slots = json.dumps(time_slots)
+
+    def get_time_slots(self, date):
+        """Get time slots for a specific date."""
+        if self.time_slots:
+            time_slots = json.loads(self.time_slots)
+            return time_slots.get(date, [])
+        return []
     
 class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
