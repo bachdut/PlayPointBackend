@@ -10,7 +10,7 @@ from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer
 import base64
 import json
-from models import User, Court, Reservation, Product, GroupingProduct, Purchase, Game
+from models import User, Court, Reservation, Product, GroupingProduct, Purchase, Game, ChatMessage
 from flask_uploads import UploadSet, configure_uploads, IMAGES
 from werkzeug.utils import secure_filename
 import os
@@ -863,6 +863,88 @@ def shuffle_game(game_id):
         'team1': [player.username for player in team1],
         'team2': [player.username for player in team2]
     }), 200
+
+#Chat API functions
+
+@app.route('/game/<int:game_id>/chat', methods=['POST'])
+@jwt_required()
+def post_chat_message(game_id):
+    current_user = get_jwt_identity()  # Get the currently authenticated user
+    data = request.get_json()
+
+    message_text = data.get('message')
+    if not message_text:
+        return jsonify({'error': 'Message cannot be empty'}), 400
+
+    game = Game.query.get(game_id)
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
+
+    # Ensure the user has joined the game
+    reservation = Reservation.query.filter_by(user_id=current_user, game_id=game_id).first()
+    if not reservation:
+        return jsonify({'error': 'You must be part of the game to send messages'}), 403
+
+    # Create a new chat message
+    new_message = ChatMessage(
+        game_id=game_id,
+        user_id=current_user,
+        message=message_text
+    )
+    db.session.add(new_message)
+    db.session.commit()
+
+    return jsonify({'message': 'Message sent successfully!'}), 201
+
+
+
+
+@app.route('/game/<int:game_id>/chat', methods=['GET'])
+@jwt_required()
+def get_chat_messages(game_id):
+    current_user_id = get_jwt_identity()
+
+    # Check if the user has joined the game
+    reservation = Reservation.query.filter_by(game_id=game_id, user_id=current_user_id).first()
+    if not reservation:
+        return jsonify({'error': 'User has not joined this game'}), 403
+
+    messages = ChatMessage.query.filter_by(game_id=game_id).order_by(ChatMessage.timestamp.asc()).all()
+
+    chat_history = [
+        {
+            'username': message.user.username,
+            'sender_id': message.user.id,
+            'content': message.message,
+            'timestamp': message.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'message_id': message.id
+        }
+        for message in messages
+    ]
+
+    return jsonify(chat_history), 200
+
+
+@app.route('/game/<int:game_id>/delete-message/<int:message_id>', methods=['DELETE'])
+@jwt_required()
+def delete_message(game_id, message_id):
+    user_id = get_jwt_identity()
+    
+    # Check if the message exists
+    message = ChatMessage.query.filter_by(id=message_id, game_id=game_id).first()
+
+    if not message:
+        return jsonify({'error': 'Message not found'}), 404
+
+    # Only the author of the message or the host can delete the message
+    if message.user.id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    # Perform the deletion
+    db.session.delete(message)
+    db.session.commit()
+
+    return jsonify({'message': 'Message deleted successfully'}), 200
 
 #Profile pic 
 @app.route('/uploads/profilePictures/<filename>')

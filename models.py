@@ -117,3 +117,15 @@ class Game(db.Model):
 
     def __repr__(self):
         return f'<Game {self.court_id} by {self.user_id}>'
+    
+class ChatMessage(db.Model):
+    __tablename__ = 'chat_messages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('game.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message = db.Column(db.String(500), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='messages')
+    game = db.relationship('Game', backref='messages')
