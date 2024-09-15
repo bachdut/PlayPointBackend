@@ -706,6 +706,8 @@ def delete_game(game_id):
     if (game.players_joined or 0) > 1:
         return jsonify({'message': 'Cannot delete a game with players already joined'}), 400
 
+
+
     db.session.delete(game)
     db.session.commit()
 
@@ -894,8 +896,13 @@ def post_chat_message(game_id):
     db.session.add(new_message)
     db.session.commit()
 
-    return jsonify({'message': 'Message sent successfully!'}), 201
-
+    return jsonify({
+        'username': new_message.user.username,
+        'sender_id': new_message.user.id,
+        'content': new_message.message,
+        'timestamp': new_message.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'message_id': new_message.id
+    }), 201
 
 
 
