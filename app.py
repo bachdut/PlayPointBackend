@@ -706,7 +706,8 @@ def delete_game(game_id):
     if (game.players_joined or 0) > 1:
         return jsonify({'message': 'Cannot delete a game with players already joined'}), 400
 
-
+    # Delete all associated chat messages
+    ChatMessage.query.filter_by(game_id=game_id).delete()
 
     db.session.delete(game)
     db.session.commit()
