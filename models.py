@@ -110,7 +110,8 @@ class Game(db.Model):
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    players_joined = db.Column(db.Integer, default=0) 
+    players_joined = db.Column(db.Integer, default=0)
+    share_link = db.Column(db.String(255), unique=True, nullable=True)
 
     court = db.relationship('Court', backref=db.backref('games', lazy=True))
     user = db.relationship('User', backref=db.backref('games', lazy=True))
