@@ -14,6 +14,8 @@ from models import User, Court, Reservation, Product, GroupingProduct, Purchase,
 from flask_uploads import UploadSet, configure_uploads, IMAGES
 from werkzeug.utils import secure_filename
 import os
+import shortuuid
+from urllib.parse import urlparse, urljoin
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -77,6 +79,14 @@ def confirm_token(token, expiration=3600):
 def mock_send_email(to, subject, template):
     print(f"Mock email sent to {to} with subject '{subject}'")
     print(template)
+
+#for share game event
+
+def generate_share_link(game_id):
+    unique_id = shortuuid.uuid()
+    base_url = url_for('shared_game', unique_id=unique_id, _external=True)
+    return f"{base_url}?game_id={game_id}"
+
 
 @app.route('/reset-password', methods=['POST'])
 def reset_password():
@@ -953,6 +963,46 @@ def delete_message(game_id, message_id):
     db.session.commit()
 
     return jsonify({'message': 'Message deleted successfully'}), 200
+
+
+# Share gamw event routs
+@app.route('/create-share-link/<int:game_id>', methods=['POST'])
+@jwt_required()
+def create_share_link(game_id):
+    game = Game.query.get(game_id)
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
+    
+    share_link = generate_share_link(game_id)
+    
+    # Store the share link in the database
+    game.share_link = share_link
+    db.session.commit()
+    
+    return jsonify({'share_link': share_link})
+
+@app.route('/shared-game/<string:unique_id>')
+def shared_game(unique_id):
+    base_url = urljoin(request.url_root, f'/shared-game/{unique_id}')
+    game = Game.query.filter(Game.share_link.like(f"{base_url}%")).first()
+    
+    if not game:
+        return jsonify({'error': 'Game not found'}), 404
+    
+    # Return game details
+    return jsonify({
+        'id': game.id,
+        'court_name': game.court.name if game.court else None,  # Assuming there's a relationship with Court model
+        'start_time': game.start_time.isoformat() if game.start_time else None,
+        'end_time': game.end_time.isoformat() if game.end_time else None,
+        'created_at': game.created_at.isoformat() if game.created_at else None,
+        'location': game.court.location if game.court else None,  # Assuming location is in the Court model
+        'price': game.court.price if game.court else None,  # Assuming price is in the Court model
+        'available_seats': game.court.available_seats if game.court else None,
+        'category': game.court.category if game.court else None,
+        'level': game.court.level_of_players if game.court else None,
+        'players_joined': game.players_joined,
+    })
 
 #Profile pic 
 @app.route('/uploads/profilePictures/<filename>')
