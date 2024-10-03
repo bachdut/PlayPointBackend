@@ -27,7 +27,8 @@ bcrypt = Bcrypt()
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')  # Set this variable in Render's dashboard
+#app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'fUTMIHsA7L1x9EnNoW4j2tWTjD4ga0xy'
 app.config['GOOGLE_CLIENT_ID'] = '136528838841-f4qtnf6psgdhr2d71953slrsh0uvoosm.apps.googleusercontent.com'
@@ -965,4 +966,4 @@ from models import User, Court, Reservation  # Ensure this import is at the end
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()  # Create all tables
-    app.run(debug=True, port=8888)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
