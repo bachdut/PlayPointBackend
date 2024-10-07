@@ -1,0 +1,46 @@
+name: Deploy Backend with Migrations to postgresSQL database
+
+on:
+  push:
+    branches:
+      - main  # You can adjust this to the branch you use for deployments
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          . venv/bin/activate
+          pip install -r requirements.txt
+
+      # Set up environment variables
+      - name: Set environment variables
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_POSTGRES_URL }}  # Assuming you've stored this in GitHub Secrets
+        run: echo "Environment variables set"
+
+      # Run migrations
+      - name: Run database migrations
+        run: |
+          . venv/bin/activate
+          flask db upgrade
+
+      # Deploy application
+      - name: Deploy to Render
+        run: |
+          . venv/bin/activate
+          gunicorn app:app --workers 3 --bind 0.0.0.0:8000
