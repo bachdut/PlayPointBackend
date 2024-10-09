@@ -3,7 +3,7 @@ name: Deploy Backend with Migrations to PostgreSQL Database
 on:
   push:
     branches:
-      - main  # Adjust to your deployment branch if different
+      - main
 
 jobs:
   deploy:
@@ -27,14 +27,13 @@ jobs:
           . venv/bin/activate
           pip install -r requirements.txt
 
-      # Run migrations
+      # Run database migrations
       - name: Run database migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           . venv/bin/activate
-          flask db migrate -m "Auto migration"  # Only generate new migration scripts if there are changes
-          flask db upgrade  # Apply the migrations
+          flask db upgrade  # Apply any existing migrations
 
       # Deploy application
       - name: Deploy to Render
