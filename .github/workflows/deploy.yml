@@ -27,14 +27,9 @@ jobs:
           . venv/bin/activate
           pip install -r requirements.txt
 
-      # Set up environment variables
-      - name: Set environment variables
+      - name: Run migrations
         env:
-          DATABASE_URL: ${{ secrets.RENDER_POSTGRES_URL }}  # Assuming you've stored this in GitHub Secrets
-        run: echo "Environment variables set"
-
-      # Run migrations
-      - name: Run database migrations
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           . venv/bin/activate
           flask db upgrade
