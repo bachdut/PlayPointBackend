@@ -33,8 +33,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           . venv/bin/activate
-          flask db init  # Initialize migrations if not done yet
-          flask db migrate -m "Initial migration"  # Generate migration scripts
+          flask db migrate -m "Auto migration"  # Only generate new migration scripts if there are changes
           flask db upgrade  # Apply the migrations
 
       # Deploy application
