@@ -10,33 +10,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the code
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # Set up Python
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
 
-      # Install dependencies
       - name: Install dependencies
         run: |
           python -m venv venv
           . venv/bin/activate
           pip install -r requirements.txt
 
-      # Run database migrations
       - name: Run database migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           . venv/bin/activate
-          flask db upgrade  # Apply any existing migrations
+          flask db upgrade head  # This ensures all migrations are applied
 
-      # Deploy application
       - name: Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: |
-          . venv/bin/activate
-          gunicorn app:app --workers 3 --bind 0.0.0.0:8000
+          curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
