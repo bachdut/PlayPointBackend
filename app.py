@@ -16,6 +16,10 @@ from werkzeug.utils import secure_filename
 import os
 import shortuuid
 from urllib.parse import urlparse, urljoin
+from flask_cors import CORS
+import base64
+import io
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -258,11 +262,9 @@ def update_profile():
     user = User.query.get(current_user_id)
     if not user:
         return jsonify({'message': 'User not found'}), 404
-
     try:
         data = request.form.to_dict()
         files = request.files
-
         logging.debug(f"Received data: {data}")
         logging.debug(f"Received files: {files}")
 
@@ -279,18 +281,20 @@ def update_profile():
         user.professional_level = data.get('skillLevel', user.professional_level)
         user.favorite_position = data.get('sportRule', user.favorite_position)
 
-        # Ensure healthDeclaration is a boolean
         health_declaration = data.get('healthDeclaration', user.health_declaration)
         if isinstance(health_declaration, str):
             health_declaration = health_declaration.lower() == 'true'
         user.health_declaration = health_declaration
 
-        # Handle profile picture upload
         if 'profilePicture' in files:
+            file = files['profilePicture']
             filename = secure_filename(f'{user.id}.jpg')
+            file_data = file.read()
+            user.profile_picture = base64.b64encode(file_data).decode('utf-8')
+            
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            files['profilePicture'].save(filepath)
-            user.profile_picture = url_for('uploaded_file', filename=filename, _external=True)
+            with open(filepath, 'wb') as f:
+                f.write(file_data)
 
         db.session.commit()
         return jsonify({'message': 'Profile updated successfully'}), 200
@@ -300,7 +304,22 @@ def update_profile():
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
         return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
+
+@app.route('/uploads/profilePictures/<filename>')
+def uploaded_file(filename):
+    user_id = filename.split('.')[0]
+    user = User.query.get(user_id)
     
+    if user and user.profile_picture:
+        image_data = base64.b64decode(user.profile_picture)
+        return send_file(
+            io.BytesIO(image_data),
+            mimetype='image/jpeg',
+            as_attachment=False,
+            download_name=filename
+        )
+    else:
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Courts routes
 @app.route('/add-court', methods=['POST'])
@@ -597,7 +616,7 @@ def user_details():
         'favoriteSports': user.favorite_sport or '',
         'skillLevel': user.professional_level or '',
         'sportRule': user.favorite_position or '',
-        'profilePicture': user.profile_picture
+        'profilePicture': url_for('uploaded_file', filename=f'{user.id}.jpg', _external=True) if user.profile_picture else None
     }
 
     return jsonify(user_data), 200
@@ -1004,11 +1023,6 @@ def shared_game(unique_id):
         'level': game.court.level_of_players if game.court else None,
         'players_joined': game.players_joined,
     })
-
-#Profile pic 
-@app.route('/uploads/profilePictures/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
 from models import User, Court, Reservation  # Ensure this import is at the end
