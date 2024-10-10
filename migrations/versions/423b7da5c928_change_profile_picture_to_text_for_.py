@@ -1,16 +1,17 @@
 """Change profile_picture to Text for base64 storage
 
 Revision ID: 423b7da5c928
-Revises: <previous_revision_id>
-Create Date: <timestamp>
+Revises: 
+Create Date: 2024-10-10 20:31:21.834959
 
 """
 from alembic import op
 import sqlalchemy as sa
+from alembic import context
 
 # revision identifiers, used by Alembic.
 revision = '423b7da5c928'
-down_revision = '<previous_revision_id>'  # Make sure this matches your actual previous revision
+down_revision = None
 branch_labels = None
 depends_on = None
 
@@ -30,9 +31,6 @@ def upgrade():
                            existing_nullable=True)
         else:
             batch_op.add_column(sa.Column('profile_picture', sa.Text(), nullable=True))
-        
-        # Remove this line as the column doesn't exist
-        # batch_op.drop_column('temp_profile_picture')
 
 def downgrade():
     # Use batch_alter_table to handle SQLite constraints
