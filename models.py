@@ -10,7 +10,6 @@ class User(db.Model):
     password = db.Column(db.String(60), nullable=False)
     google_id = db.Column(db.String(256), nullable=True)
     profile_picture = db.Column(db.LargeBinary, nullable=True) 
-    profile_picture_url = db.Column(db.String(256), nullable=True)  
     full_name = db.Column(db.String(100), nullable=True)
     gender = db.Column(db.String(20), nullable=True)
     date_of_birth = db.Column(db.Date, nullable=True)
