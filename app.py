@@ -34,8 +34,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')  # Set this va
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'fUTMIHsA7L1x9EnNoW4j2tWTjD4ga0xy'
 app.config['GOOGLE_CLIENT_ID'] = '136528838841-f4qtnf6psgdhr2d71953slrsh0uvoosm.apps.googleusercontent.com'
-photos = UploadSet('photos', IMAGES)
-configure_uploads(app, photos)
 # Configure Flask-Mail
 app.config['MAIL_SERVER'] = 'smtp.example.com'
 app.config['MAIL_PORT'] = 587
