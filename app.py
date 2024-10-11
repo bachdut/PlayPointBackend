@@ -261,48 +261,47 @@ def update_profile():
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     if not user:
+        logging.error(f"User not found: {current_user_id}")
         return jsonify({'message': 'User not found'}), 404
     try:
         data = request.form.to_dict()
         files = request.files
-        logging.debug(f"Received data: {data}")
-        logging.debug(f"Received files: {files}")
+        logging.info(f"Received data: {data}")
+        logging.info(f"Received files: {list(files.keys())}")
 
-        if 'dateOfBirth' in data and data['dateOfBirth']:
-            user.date_of_birth = datetime.strptime(data['dateOfBirth'], '%Y-%m-%d').date()
-        else:
-            user.date_of_birth = user.date_of_birth
-
-        user.username = data.get('username', user.username)
-        user.gender = data.get('gender', user.gender)
-        user.phone = data.get('phone', user.phone)
-        user.address = data.get('address', user.address)
-        user.favorite_sport = data.get('favoriteSports', user.favorite_sport)
-        user.professional_level = data.get('skillLevel', user.professional_level)
-        user.favorite_position = data.get('sportRule', user.favorite_position)
-
-        health_declaration = data.get('healthDeclaration', user.health_declaration)
-        if isinstance(health_declaration, str):
-            health_declaration = health_declaration.lower() == 'true'
-        user.health_declaration = health_declaration
+        for key, value in data.items():
+            if hasattr(user, key):
+                if key == 'dateOfBirth' and value:
+                    user.date_of_birth = datetime.strptime(value, '%Y-%m-%d').date()
+                elif key == 'healthDeclaration':
+                    user.health_declaration = value.lower() == 'true'
+                else:
+                    setattr(user, key, value)
+                logging.info(f"Updated {key}: {value}")
 
         if 'profilePicture' in files:
             file = files['profilePicture']
-            filename = secure_filename(f'{user.id}.jpg')
+            logging.info(f"Processing profile picture: {file.filename}")
             file_data = file.read()
             user.profile_picture = base64.b64encode(file_data).decode('utf-8')
-            
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            with open(filepath, 'wb') as f:
-                f.write(file_data)
+            logging.info("Profile picture encoded and saved to database")
+
+            # Optional: Save to file system
+            if 'UPLOAD_FOLDER' in app.config:
+                filename = secure_filename(f'{user.id}.jpg')
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                with open(filepath, 'wb') as f:
+                    f.write(file_data)
+                logging.info(f"Profile picture saved to file: {filepath}")
 
         db.session.commit()
+        logging.info(f"Profile updated successfully for user {current_user_id}")
         return jsonify({'message': 'Profile updated successfully'}), 200
     except ValueError as e:
-        logging.error(f"Error updating profile: {e}")
+        logging.error(f"ValueError updating profile: {e}")
         return jsonify({'message': 'Invalid data format', 'error': str(e)}), 400
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logging.error(f"Unexpected error updating profile: {e}", exc_info=True)
         return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
 
 @app.route('/uploads/profilePictures/<filename>')
