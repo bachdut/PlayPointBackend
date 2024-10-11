@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, url_for, send_from_directory
+from flask import Flask, jsonify, request, render_template, url_for, send_from_directory, send_file
 from dbModel import db
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
@@ -23,22 +23,17 @@ import io
 
 logging.basicConfig(level=logging.DEBUG)
 
-UPLOAD_FOLDER = os.path.join('uploads', 'profilePictures')
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
 
 
 # Initialize SQLAlchemy and Bcrypt here without an app
 bcrypt = Bcrypt()
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')  # Set this variable in Render's dashboard
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'fUTMIHsA7L1x9EnNoW4j2tWTjD4ga0xy'
 app.config['GOOGLE_CLIENT_ID'] = '136528838841-f4qtnf6psgdhr2d71953slrsh0uvoosm.apps.googleusercontent.com'
-app.config['UPLOADED_PHOTOS_DEST'] = UPLOAD_FOLDER
 photos = UploadSet('photos', IMAGES)
 configure_uploads(app, photos)
 # Configure Flask-Mail
@@ -286,14 +281,6 @@ def update_profile():
             user.profile_picture = base64.b64encode(file_data).decode('utf-8')
             logging.info("Profile picture encoded and saved to database")
 
-            # Optional: Save to file system
-            if 'UPLOAD_FOLDER' in app.config:
-                filename = secure_filename(f'{user.id}.jpg')
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                with open(filepath, 'wb') as f:
-                    f.write(file_data)
-                logging.info(f"Profile picture saved to file: {filepath}")
-
         db.session.commit()
         logging.info(f"Profile updated successfully for user {current_user_id}")
         return jsonify({'message': 'Profile updated successfully'}), 200
@@ -306,19 +293,25 @@ def update_profile():
 
 @app.route('/uploads/profilePictures/<filename>')
 def uploaded_file(filename):
+    # Get the user by filename (assuming filename is '{user_id}.jpg')
     user_id = filename.split('.')[0]
     user = User.query.get(user_id)
     
     if user and user.profile_picture:
-        image_data = base64.b64decode(user.profile_picture)
-        return send_file(
-            io.BytesIO(image_data),
-            mimetype='image/jpeg',
-            as_attachment=False,
-            download_name=filename
-        )
-    else:
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        try:
+            image_data = base64.b64decode(user.profile_picture)
+            return send_file(
+                io.BytesIO(image_data),
+                mimetype='image/jpeg',
+                as_attachment=False,
+                download_name=filename
+            )
+        except Exception as e:
+            app.logger.error(f"Error serving profile picture from database: {str(e)}")
+            return jsonify({'error': 'Error serving profile picture'}), 500
+    
+    # If the user doesn't exist or doesn't have a profile picture, return a 404
+    return jsonify({'error': 'Profile picture not found'}), 404
 
 # Courts routes
 @app.route('/add-court', methods=['POST'])
